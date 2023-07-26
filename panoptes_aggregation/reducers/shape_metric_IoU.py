@@ -80,7 +80,7 @@ def panoptes_to_geometry(params, shape):
         raise ValueError('The IoU metric only works with the following shapes: rectangle, rotateing rectangle, circle, ellipse, or triangle')
 
 
-def IoU_metric(params1, params2, shape):
+def IoU_metric(params1, params2, shape, eps_t=0.1):
     '''Find the Intersection of Union distance between two shapes.
 
     Parameters
@@ -102,17 +102,25 @@ def IoU_metric(params1, params2, shape):
     '''
     geo1 = panoptes_to_geometry(params1, shape)
     geo2 = panoptes_to_geometry(params2, shape)
-    intersection = geo1.intersection(geo2).area
-    union = geo1.union(geo2).area
+    if 'temporal' in shape:
+        t1, t2 = sorted([params1[-1], params2[-1]])
+        # calculate intersection volume as the 2D shape intersection
+        # multiplied by the intersection along the time axis
+        time_width = max([0, t1 - t2 + 2 * eps_t])
+        intersection = geo1.intersection(geo2).area * time_width
+        
+        # calculate the union from scratch by adding the two areas
+        # and subtracting the extra intersection contribution
+        union = 2 * geo1.area * eps_t + 2 * geo2.area * eps_t - intersection
+    else:
+        intersection = geo1.intersection(geo2).area
+        union = geo1.union(geo2).area
+    
     if union == 0:
         # catch divide by zero (i.e. cases when neither shape has an area)
         return numpy.inf
 
-    if 'temporal' in shape:
-        # combine the shape IoU with the time difference and normalize
-        return 0.5 * ((1 - intersection / union) + numpy.abs(params1[-1] - params2[-1]))
-    else:
-        return 1 - intersection / union
+    return 1 - intersection / union
 
 
 def average_bounds(params_list, shape):
@@ -250,7 +258,7 @@ def scale_shape(params, shape, gamma):
         raise ValueError('The IoU metric only works with the following shapes: rectangle, rotateing rectangle, circle, ellipse, or triangle')
 
 
-def average_shape_IoU(params_list, shape):
+def average_shape_IoU(params_list, shape, eps_t=0.1):
     '''Find the average shape and standard deviation from a list of parameters with respect
     to the IoU metric.
 
@@ -271,7 +279,7 @@ def average_shape_IoU(params_list, shape):
         The standard deviation of the input shapes with respect to the IoU metric
     '''
     def sum_distance(x):
-        return sum([IoU_metric(x, p, shape)**2 for p in params_list])
+        return sum([IoU_metric(x, p, shape, eps_t)**2 for p in params_list])
     # find shape that minimizes the variance in the IoU metric using bounds
     m = scipy.optimize.shgo(
         sum_distance,

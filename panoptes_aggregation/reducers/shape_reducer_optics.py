@@ -20,6 +20,7 @@ from .shape_metric_IoU import IoU_metric, average_shape_IoU
 warnings.filterwarnings("ignore", category=RuntimeWarning, module='sklearn.cluster')
 
 DEFAULTS = {
+    'eps_t': {'default': 0.1, 'type': float},
     'min_samples': {'default': 3, 'type': int},
     'min_cluster_size': {'default': 2, 'type': int},
     'algorithm': {'default': 'auto', 'type': str},
@@ -74,13 +75,18 @@ def shape_reducer_optics(data_by_tool, **kwargs):
     shape_params = SHAPE_LUT[shape]
     metric_type = kwargs.pop('metric_type', 'euclidean').lower()
     symmetric = data_by_tool.pop('symmetric')
+    eps_t = kwargs.pop('eps_t', 0.1)
     if metric_type == 'euclidean':
         metric, avg = get_shape_metric_and_avg(shape, symmetric=symmetric)
         kwargs['metric'] = metric
     elif metric_type == 'iou':
         kwargs['metric'] = IoU_metric
-        kwargs['metric_params'] = {'shape': shape}
-        avg = average_shape_IoU
+        if 'temporal' in shape:
+            kwargs['metric_params'] = {'shape': shape, 'eps_t': eps_t}
+            avg = lambda params_list, shape: average_shape_IoU(params_list, shape, eps_t=eps_t)
+        else:
+            kwargs['metric_params'] = {'shape': shape}
+            avg = average_shape_IoU
     else:
         raise ValueError('metric_type must be either "euclidean" or "IoU".')
     clusters = OrderedDict()
